@@ -1,0 +1,16 @@
+D:\Csharp\WinForm1\obj\Debug\net8.0-windows\QuineMcCluskeyGUI.MainForm.resources
+D:\Csharp\WinForm1\obj\Debug\net8.0-windows\QuineMcCluskeyGUI.csproj.GenerateResource.cache
+D:\Csharp\WinForm1\obj\Debug\net8.0-windows\QuineMcCluskeyGUI.GeneratedMSBuildEditorConfig.editorconfig
+D:\Csharp\WinForm1\obj\Debug\net8.0-windows\QuineMcCluskeyGUI.AssemblyInfoInputs.cache
+D:\Csharp\WinForm1\obj\Debug\net8.0-windows\QuineMcCluskeyGUI.AssemblyInfo.cs
+D:\Csharp\WinForm1\obj\Debug\net8.0-windows\QuineMcCluskeyGUI.csproj.CoreCompileInputs.cache
+D:\Csharp\WinForm1\bin\Debug\net8.0-windows\QuineMcCluskeyGUI.exe
+D:\Csharp\WinForm1\bin\Debug\net8.0-windows\QuineMcCluskeyGUI.deps.json
+D:\Csharp\WinForm1\bin\Debug\net8.0-windows\QuineMcCluskeyGUI.runtimeconfig.json
+D:\Csharp\WinForm1\bin\Debug\net8.0-windows\QuineMcCluskeyGUI.dll
+D:\Csharp\WinForm1\bin\Debug\net8.0-windows\QuineMcCluskeyGUI.pdb
+D:\Csharp\WinForm1\obj\Debug\net8.0-windows\QuineMcCluskeyGUI.dll
+D:\Csharp\WinForm1\obj\Debug\net8.0-windows\refint\QuineMcCluskeyGUI.dll
+D:\Csharp\WinForm1\obj\Debug\net8.0-windows\QuineMcCluskeyGUI.pdb
+D:\Csharp\WinForm1\obj\Debug\net8.0-windows\QuineMcCluskeyGUI.genruntimeconfig.cache
+D:\Csharp\WinForm1\obj\Debug\net8.0-windows\ref\QuineMcCluskeyGUI.dll
