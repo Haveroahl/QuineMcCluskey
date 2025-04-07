@@ -33,25 +33,6 @@ namespace QuineMcCluskey
         public abstract HashSet<string> MinimizeSOP();
         public abstract string MinimizePOS();
 
-        protected string ConvertToVariables(string term)
-        {
-            if (string.IsNullOrEmpty(term))
-                return string.Empty;
-
-            HashSet<string> variables = GenerateVariableNames(NumVariables);
-            List<string> result = new List<string>();
-
-            for (int i = 0; i < term.Length; i++)
-            {
-                if (term[i] == '1')
-                    result.Add(variables.ElementAt(i));
-                else if (term[i] == '0')
-                    result.Add(variables.ElementAt(i) + "'");
-            }
-
-            return string.Join("", result);
-        }
-
         protected HashSet<string> GenerateVariableNames(int numVariables)
         {
             HashSet<string> variables = new HashSet<string>();
@@ -89,129 +70,6 @@ namespace QuineMcCluskey
 
             return minterms;
         }
-
-        protected string ConvertMintermsToPOS(HashSet<int> minterms)
-        {
-            HashSet<string> posTerms = new HashSet<string>();
-            var variables = GenerateVariableNames(NumVariables);
-
-            foreach (var minterm in minterms)
-            {
-                string binary = Convert.ToString(minterm, 2).PadLeft(NumVariables, '0');
-                HashSet<string> posTerm = new HashSet<string>();
-
-                for (int i = 0; i < binary.Length; i++)
-                {
-                    posTerm.Add(binary[i] == '0' ? variables.ElementAt(i) : variables.ElementAt(i) + "'");
-                }
-
-                posTerms.Add("(" + string.Join("+", posTerm) + ")");
-            }
-
-            return string.Join("", posTerms);
-        }
-
-        protected string SimplifyPOS(string posExpression)
-        {
-            if (string.IsNullOrEmpty(posExpression))
-                return "";
-
-            var posTerms = posExpression.Split(new[] { ")(" }, StringSplitOptions.None)
-                                        .Select(term => term.Trim('(', ')'))
-                                        .Select(term => new HashSet<string>(term.Split('+')))
-                                        .ToList();
-
-            var minimizedPos = MinimizePosTerms(posTerms);
-            return string.Join("", minimizedPos.Select(term => "(" + string.Join("+", term) + ")"));
-        }
-
-        private List<HashSet<string>> MinimizePosTerms(List<HashSet<string>> posTerms)
-        {
-            List<HashSet<string>> result = new List<HashSet<string>>(posTerms);
-
-            bool simplified;
-            do
-            {
-                simplified = false;
-                for (int i = 0; i < result.Count - 1; i++)
-                {
-                    for (int j = i + 1; j < result.Count; j++)
-                    {
-                        HashSet<string>? combined = CombineTerms(result[i], result[j]);
-                        if (combined != null && !result.Any(t => t.SetEquals(combined)))
-                        {
-                            result.RemoveAt(j);
-                            result.RemoveAt(i);
-                            result.Add(combined);
-                            simplified = true;
-                            break;
-                        }
-                    }
-                    if (simplified) break;
-                }
-            } while (simplified);
-
-            return result;
-        }
-
-        private HashSet<string>? CombineTerms(HashSet<string> term1, HashSet<string> term2)
-        {
-            var differences = term1.Where(x => !term2.Contains(x)).Union(term2.Where(x => !term1.Contains(x))).ToList();
-
-            if (differences.Count == 2 && IsNegation(differences[0], differences[1]))
-            {
-                var combined = new HashSet<string>(term1);
-                combined.IntersectWith(term2);
-                return combined;
-            }
-            return null;
-        }
-
-        private bool IsNegation(string var1, string var2)
-        {
-            return var1 == var2 + "'" || var2 == var1 + "'";
-        }
-
-        protected HashSet<int> GetMintermsFromSOP(HashSet<string> sopTerms)
-        {
-            HashSet<int> minterms = new HashSet<int>();
-            if (sopTerms == null || !sopTerms.Any())
-                return minterms;
-
-            var variables = GenerateVariableNames(NumVariables);
-
-            foreach (var term in sopTerms)
-            {
-                string binary = new string(variables
-                    .Select(v => term.Contains(v + "'") ? '0' : term.Contains(v) ? '1' : '-')
-                    .ToArray());
-
-                if (binary.Contains("-"))
-                {
-                    int dashCount = binary.Count(c => c == '-');
-                    for (int i = 0; i < (1 << dashCount); i++)
-                    {
-                        string tempBinary = binary;
-                        int dashIndex = 0;
-                        for (int j = 0; j < tempBinary.Length; j++)
-                        {
-                            if (tempBinary[j] == '-')
-                            {
-                                tempBinary = tempBinary.Substring(0, j) + ((i >> dashIndex) & 1) + tempBinary.Substring(j + 1);
-                                dashIndex++;
-                            }
-                        }
-                        minterms.Add(Convert.ToInt32(tempBinary, 2));
-                    }
-                }
-                else
-                {
-                    minterms.Add(Convert.ToInt32(binary, 2));
-                }
-            }
-
-            return minterms;
-        }
     }
 
     public class QuineMcCluskeyMinimizer : BooleanFunctionMinimizer
@@ -223,45 +81,78 @@ namespace QuineMcCluskey
 
         public override HashSet<string> MinimizeSOP()
         {
+            int maxValue = (1 << NumVariables) - 1;
+            if (Minterms.Count == maxValue + 1) // Nếu tất cả minterms được chọn
+                return new HashSet<string> { "1" };
+
             if (!Minterms.Any())
                 return new HashSet<string>();
 
             HashSet<int> allTerms = new HashSet<int>(Minterms);
             allTerms.UnionWith(DontCares);
             List<string> binaryMinterms = allTerms.Select(m => Convert.ToString(m, 2).PadLeft(NumVariables, '0')).ToList();
+            HashSet<string> primeImplicants = FindPrimeImplicants(binaryMinterms);
+            return ExtractEssentialPrimeImplicants(primeImplicants, Minterms, ConvertToVariablesSOP);
+        }
+
+        public override string MinimizePOS()
+        {
+            int maxValue = (1 << NumVariables) - 1;
+            HashSet<int> maxterms = GetMaxtermsFromMinterms(Minterms);
+            if (maxterms.Count == 0) // Nếu không còn maxterms, POS là 0
+                return "0";
+            if (maxterms.Count == maxValue + 1) // Nếu tất cả là maxterms, POS là 1
+                return "1";
+
+            HashSet<int> allTerms = new HashSet<int>(maxterms);
+            allTerms.UnionWith(DontCares);
+            List<string> binaryMaxterms = allTerms.Select(m => Convert.ToString(m, 2).PadLeft(NumVariables, '0')).ToList();
+            HashSet<string> primeImplicants = FindPrimeImplicants(binaryMaxterms);
+            HashSet<string> essentialPrimeImplicants = ExtractEssentialPrimeImplicants(primeImplicants, maxterms, ConvertToVariablesPOS);
+
+            // Nối các essential prime implicants bằng tích (product of sums)
+            if (essentialPrimeImplicants.Count == 0)
+                return "1"; // Nếu không có implicant nào, hàm là 1
+
+            // Dùng dấu cách thay vì "*" để biểu thị tích, thêm dấu ngoặc cho mỗi implicant
+            return string.Join("", essentialPrimeImplicants.Select(implicant => $"({implicant})").ToList());
+        }
+
+        private HashSet<string> FindPrimeImplicants(List<string> binaryTerms)
+        {
             HashSet<string> primeImplicants = new HashSet<string>();
 
-            while (binaryMinterms.Count > 0)
+            while (binaryTerms.Count > 0)
             {
-                List<string> newMinterms = new List<string>();
-                bool[] combined = new bool[binaryMinterms.Count];
+                List<string> newTerms = new List<string>();
+                bool[] combined = new bool[binaryTerms.Count];
 
-                for (int i = 0; i < binaryMinterms.Count; i++)
+                for (int i = 0; i < binaryTerms.Count; i++)
                 {
-                    for (int j = i + 1; j < binaryMinterms.Count; j++)
+                    for (int j = i + 1; j < binaryTerms.Count; j++)
                     {
-                        string? combinedTerm = Combine(binaryMinterms[i], binaryMinterms[j]);
+                        string? combinedTerm = Combine(binaryTerms[i], binaryTerms[j]);
                         if (combinedTerm != null)
                         {
-                            newMinterms.Add(combinedTerm);
+                            newTerms.Add(combinedTerm);
                             combined[i] = true;
                             combined[j] = true;
                         }
                     }
                 }
 
-                for (int i = 0; i < binaryMinterms.Count; i++)
+                for (int i = 0; i < binaryTerms.Count; i++)
                 {
                     if (!combined[i])
                     {
-                        primeImplicants.Add(binaryMinterms[i]);
+                        primeImplicants.Add(binaryTerms[i]);
                     }
                 }
 
-                binaryMinterms = newMinterms.Distinct().ToList();
+                binaryTerms = newTerms.Distinct().ToList();
             }
 
-            return ExtractEssentialPrimeImplicants(primeImplicants, Minterms);
+            return primeImplicants;
         }
 
         private string? Combine(string a, string b)
@@ -288,9 +179,9 @@ namespace QuineMcCluskey
             return new string(result);
         }
 
-        private HashSet<string> ExtractEssentialPrimeImplicants(HashSet<string> primeImplicants, HashSet<int> minterms)
+        private HashSet<string> ExtractEssentialPrimeImplicants(HashSet<string> primeImplicants, HashSet<int> terms, Func<string, string> convertToVariables)
         {
-            if (!primeImplicants.Any() || !minterms.Any())
+            if (!primeImplicants.Any() || !terms.Any())
                 return new HashSet<string>();
 
             var chart = new Dictionary<string, HashSet<int>>();
@@ -298,21 +189,21 @@ namespace QuineMcCluskey
             foreach (var implicant in primeImplicants)
             {
                 chart[implicant] = new HashSet<int>();
-                foreach (var minterm in minterms)
+                foreach (var term in terms)
                 {
-                    if (Covers(implicant, Convert.ToString(minterm, 2).PadLeft(NumVariables, '0')))
+                    if (Covers(implicant, Convert.ToString(term, 2).PadLeft(NumVariables, '0')))
                     {
-                        chart[implicant].Add(minterm);
+                        chart[implicant].Add(term);
                     }
                 }
             }
 
             var essentialPrimeImplicants = new HashSet<string>();
-            var coveredMinterms = new HashSet<int>();
+            var coveredTerms = new HashSet<int>();
 
-            foreach (var minterm in minterms)
+            foreach (var term in terms)
             {
-                var coveringImplicants = chart.Where(c => c.Value.Contains(minterm)).Select(c => c.Key).ToList();
+                var coveringImplicants = chart.Where(c => c.Value.Contains(term)).Select(c => c.Key).ToList();
                 if (coveringImplicants.Count == 1)
                 {
                     var essentialImplicant = coveringImplicants.First();
@@ -320,7 +211,7 @@ namespace QuineMcCluskey
                     {
                         essentialPrimeImplicants.Add(essentialImplicant);
                     }
-                    coveredMinterms.UnionWith(chart[essentialImplicant]);
+                    coveredTerms.UnionWith(chart[essentialImplicant]);
                 }
             }
 
@@ -329,10 +220,10 @@ namespace QuineMcCluskey
                 chart.Remove(implicant);
             }
 
-            var remainingMinterms = minterms.Except(coveredMinterms).ToHashSet();
-            while (remainingMinterms.Count > 0 && chart.Count > 0)
+            var remainingTerms = terms.Except(coveredTerms).ToHashSet();
+            while (remainingTerms.Count > 0 && chart.Count > 0)
             {
-                var bestImplicantEntry = chart.OrderByDescending(c => c.Value.Count(v => remainingMinterms.Contains(v))).FirstOrDefault();
+                var bestImplicantEntry = chart.OrderByDescending(c => c.Value.Count(v => remainingTerms.Contains(v))).FirstOrDefault();
                 if (bestImplicantEntry.Key == null) break;
 
                 var bestImplicant = bestImplicantEntry.Key;
@@ -340,37 +231,62 @@ namespace QuineMcCluskey
                 {
                     essentialPrimeImplicants.Add(bestImplicant);
                 }
-                coveredMinterms.UnionWith(chart[bestImplicant]);
-                remainingMinterms = minterms.Except(coveredMinterms).ToHashSet();
+                coveredTerms.UnionWith(chart[bestImplicant]);
+                remainingTerms = terms.Except(coveredTerms).ToHashSet();
                 chart.Remove(bestImplicant);
             }
 
-            return new HashSet<string>(essentialPrimeImplicants.Select(ConvertToVariables));
+            return new HashSet<string>(essentialPrimeImplicants.Select(convertToVariables));
         }
 
-        private bool Covers(string implicant, string minterm)
+        private bool Covers(string implicant, string term)
         {
             for (int i = 0; i < implicant.Length; i++)
             {
-                if (implicant[i] != '-' && implicant[i] != minterm[i])
+                if (implicant[i] != '-' && implicant[i] != term[i])
                     return false;
             }
             return true;
         }
 
-        public override string MinimizePOS()
+        private string ConvertToVariablesSOP(string term)
         {
-            HashSet<string> sopTerms = MinimizeSOP();
-            if (!sopTerms.Any())
-                return "";
+            if (string.IsNullOrEmpty(term))
+                return string.Empty;
 
-            HashSet<int> sopMinterms = GetMintermsFromSOP(sopTerms);
-            HashSet<int> maxterms = GetMaxtermsFromMinterms(sopMinterms);
-            string posStandard = ConvertMintermsToPOS(maxterms);
-            return SimplifyPOS(posStandard);
+            HashSet<string> variables = GenerateVariableNames(NumVariables);
+            List<string> result = new List<string>();
+
+            for (int i = 0; i < term.Length; i++)
+            {
+                if (term[i] == '1')
+                    result.Add(variables.ElementAt(i));
+                else if (term[i] == '0')
+                    result.Add(variables.ElementAt(i) + "'");
+            }
+
+            return string.Join("", result);
+        }
+
+        private string ConvertToVariablesPOS(string term)
+        {
+            if (string.IsNullOrEmpty(term))
+                return string.Empty;
+
+            HashSet<string> variables = GenerateVariableNames(NumVariables);
+            List<string> result = new List<string>();
+
+            for (int i = 0; i < term.Length; i++)
+            {
+                if (term[i] == '0')
+                    result.Add(variables.ElementAt(i));
+                else if (term[i] == '1')
+                    result.Add(variables.ElementAt(i) + "'");
+            }
+
+            return string.Join("+", result); // Trong một implicant POS, các biến được nối bằng "+"
         }
     }
-
     public class MintermInputStrategy : IInputStrategy
     {
         public HashSet<int> GetMinterms(int numVariables, HashSet<int> dontCares)
@@ -494,7 +410,7 @@ namespace QuineMcCluskey
 
                 string minimizedPOS = minimizer.MinimizePOS() ?? "";
                 Console.WriteLine("Hàm POS tối giản:");
-                Console.WriteLine(minimizedPOS.Length > 0 ? minimizedPOS : "1");
+                Console.WriteLine("Y = " + (string.IsNullOrEmpty(minimizedPOS) ? "1" : minimizedPOS));
             }
             catch (ArgumentException ex)
             {
