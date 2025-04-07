@@ -1,8 +1,8 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 
-namespace QuineMcCluskey
+namespace ConsoleApp1
 {
     public interface IBooleanFunctionMinimizer
     {
@@ -21,13 +21,13 @@ namespace QuineMcCluskey
         protected HashSet<int> Minterms { get; }
         protected HashSet<int> DontCares { get; }
 
-        protected BooleanFunctionMinimizer(int numVariables, HashSet<int> minterms, HashSet<int> dontCares)
+        protected BooleanFunctionMinimizer(int numVariables, HashSet<int>? minterms, HashSet<int>? dontCares)
         {
-            if (numVariables < 1 || numVariables > 31) // Giới hạn tối đa 31 để tránh vượt quá int.MaxValue
+            if (numVariables < 1 || numVariables > 31)
                 throw new ArgumentException("Số lượng biến phải từ 1 đến 31.");
             NumVariables = numVariables;
-            Minterms = minterms;
-            DontCares = dontCares;
+            Minterms = minterms ?? new HashSet<int>();
+            DontCares = dontCares ?? new HashSet<int>();
         }
 
         public abstract HashSet<string> MinimizeSOP();
@@ -35,6 +35,9 @@ namespace QuineMcCluskey
 
         protected string ConvertToVariables(string term)
         {
+            if (string.IsNullOrEmpty(term))
+                return string.Empty;
+
             HashSet<string> variables = GenerateVariableNames(NumVariables);
             List<string> result = new List<string>();
 
@@ -110,6 +113,9 @@ namespace QuineMcCluskey
 
         protected string SimplifyPOS(string posExpression)
         {
+            if (string.IsNullOrEmpty(posExpression))
+                return "";
+
             var posTerms = posExpression.Split(new[] { ")(" }, StringSplitOptions.None)
                                         .Select(term => term.Trim('(', ')'))
                                         .Select(term => new HashSet<string>(term.Split('+')))
@@ -131,7 +137,7 @@ namespace QuineMcCluskey
                 {
                     for (int j = i + 1; j < result.Count; j++)
                     {
-                        HashSet<string> combined = CombineTerms(result[i], result[j]);
+                        HashSet<string>? combined = CombineTerms(result[i], result[j]);
                         if (combined != null && !result.Any(t => t.SetEquals(combined)))
                         {
                             result.RemoveAt(j);
@@ -148,7 +154,7 @@ namespace QuineMcCluskey
             return result;
         }
 
-        private HashSet<string> CombineTerms(HashSet<string> term1, HashSet<string> term2)
+        private HashSet<string>? CombineTerms(HashSet<string> term1, HashSet<string> term2)
         {
             var differences = term1.Where(x => !term2.Contains(x)).Union(term2.Where(x => !term1.Contains(x))).ToList();
 
@@ -169,6 +175,9 @@ namespace QuineMcCluskey
         protected HashSet<int> GetMintermsFromSOP(HashSet<string> sopTerms)
         {
             HashSet<int> minterms = new HashSet<int>();
+            if (sopTerms == null || !sopTerms.Any())
+                return minterms;
+
             var variables = GenerateVariableNames(NumVariables);
 
             foreach (var term in sopTerms)
@@ -207,13 +216,16 @@ namespace QuineMcCluskey
 
     public class QuineMcCluskeyMinimizer : BooleanFunctionMinimizer
     {
-        public QuineMcCluskeyMinimizer(int numVariables, HashSet<int> minterms, HashSet<int> dontCares)
+        public QuineMcCluskeyMinimizer(int numVariables, HashSet<int>? minterms, HashSet<int>? dontCares)
             : base(numVariables, minterms, dontCares)
         {
         }
 
         public override HashSet<string> MinimizeSOP()
         {
+            if (!Minterms.Any())
+                return new HashSet<string>();
+
             HashSet<int> allTerms = new HashSet<int>(Minterms);
             allTerms.UnionWith(DontCares);
             List<string> binaryMinterms = allTerms.Select(m => Convert.ToString(m, 2).PadLeft(NumVariables, '0')).ToList();
@@ -228,7 +240,7 @@ namespace QuineMcCluskey
                 {
                     for (int j = i + 1; j < binaryMinterms.Count; j++)
                     {
-                        string combinedTerm = Combine(binaryMinterms[i], binaryMinterms[j]);
+                        string? combinedTerm = Combine(binaryMinterms[i], binaryMinterms[j]);
                         if (combinedTerm != null)
                         {
                             newMinterms.Add(combinedTerm);
@@ -252,7 +264,7 @@ namespace QuineMcCluskey
             return ExtractEssentialPrimeImplicants(primeImplicants, Minterms);
         }
 
-        private string Combine(string a, string b)
+        private string? Combine(string a, string b)
         {
             int diffCount = 0;
             char[] result = new char[a.Length];
@@ -278,6 +290,9 @@ namespace QuineMcCluskey
 
         private HashSet<string> ExtractEssentialPrimeImplicants(HashSet<string> primeImplicants, HashSet<int> minterms)
         {
+            if (!primeImplicants.Any() || !minterms.Any())
+                return new HashSet<string>();
+
             var chart = new Dictionary<string, HashSet<int>>();
 
             foreach (var implicant in primeImplicants)
@@ -315,9 +330,12 @@ namespace QuineMcCluskey
             }
 
             var remainingMinterms = minterms.Except(coveredMinterms).ToHashSet();
-            while (remainingMinterms.Count > 0)
+            while (remainingMinterms.Count > 0 && chart.Count > 0)
             {
-                var bestImplicant = chart.OrderByDescending(c => c.Value.Count(v => remainingMinterms.Contains(v))).First().Key;
+                var bestImplicantEntry = chart.OrderByDescending(c => c.Value.Count(v => remainingMinterms.Contains(v))).FirstOrDefault();
+                if (bestImplicantEntry.Key == null) break;
+
+                var bestImplicant = bestImplicantEntry.Key;
                 if (!essentialPrimeImplicants.Contains(bestImplicant))
                 {
                     essentialPrimeImplicants.Add(bestImplicant);
@@ -343,6 +361,9 @@ namespace QuineMcCluskey
         public override string MinimizePOS()
         {
             HashSet<string> sopTerms = MinimizeSOP();
+            if (!sopTerms.Any())
+                return "";
+
             HashSet<int> sopMinterms = GetMintermsFromSOP(sopTerms);
             HashSet<int> maxterms = GetMaxtermsFromMinterms(sopMinterms);
             string posStandard = ConvertMintermsToPOS(maxterms);
@@ -355,7 +376,11 @@ namespace QuineMcCluskey
         public HashSet<int> GetMinterms(int numVariables, HashSet<int> dontCares)
         {
             Console.WriteLine("Nhập các Minterms (dấu cách):");
-            string[] mintermsInput = Console.ReadLine().Split(' ');
+            string? input = Console.ReadLine();
+            if (string.IsNullOrWhiteSpace(input))
+                return new HashSet<int>();
+
+            string[] mintermsInput = input.Split(' ', StringSplitOptions.RemoveEmptyEntries);
             HashSet<int> minterms = new HashSet<int>(mintermsInput.Select(int.Parse));
             ValidateInput(numVariables, minterms, dontCares);
             return minterms;
@@ -378,13 +403,17 @@ namespace QuineMcCluskey
 
         public MaxtermInputStrategy(int numVariables)
         {
-            minimizer = new QuineMcCluskeyMinimizer(numVariables, new HashSet<int>(), new HashSet<int>());
+            minimizer = new QuineMcCluskeyMinimizer(numVariables, null, null);
         }
 
         public HashSet<int> GetMinterms(int numVariables, HashSet<int> dontCares)
         {
             Console.WriteLine("Nhập các Maxterms (dấu cách):");
-            string[] maxtermsInput = Console.ReadLine().Split(' ');
+            string? input = Console.ReadLine();
+            if (string.IsNullOrWhiteSpace(input))
+                return new HashSet<int>();
+
+            string[] maxtermsInput = input.Split(' ', StringSplitOptions.RemoveEmptyEntries);
             HashSet<int> maxterms = new HashSet<int>(maxtermsInput.Select(int.Parse));
             ValidateInput(numVariables, maxterms, dontCares);
             return minimizer.GetMintermsFromMaxterms(maxterms);
@@ -419,10 +448,16 @@ namespace QuineMcCluskey
             try
             {
                 Console.WriteLine("Nhập số lượng biến (1-31):");
-                int numVariables = int.Parse(Console.ReadLine());
+                string? numVariablesInput = Console.ReadLine();
+                if (string.IsNullOrWhiteSpace(numVariablesInput))
+                    throw new ArgumentException("Số lượng biến không được để trống.");
+                int numVariables = int.Parse(numVariablesInput);
 
                 Console.WriteLine("Chọn loại đầu vào (1: Minterms, 2: Maxterms):");
-                int choice = int.Parse(Console.ReadLine());
+                string? choiceInput = Console.ReadLine();
+                if (string.IsNullOrWhiteSpace(choiceInput))
+                    throw new ArgumentException("Lựa chọn không được để trống.");
+                int choice = int.Parse(choiceInput);
 
                 IInputStrategy inputStrategy;
                 switch (choice)
@@ -439,12 +474,11 @@ namespace QuineMcCluskey
                 }
 
                 Console.WriteLine("Nhập các Don't care (dấu cách or Enter nếu rỗng):");
-                string dontCareInput = Console.ReadLine();
+                string? dontCareInput = Console.ReadLine();
                 HashSet<int> dontCares = string.IsNullOrWhiteSpace(dontCareInput)
                     ? new HashSet<int>()
-                    : new HashSet<int>(dontCareInput.Split(' ').Select(int.Parse));
+                    : new HashSet<int>(dontCareInput.Split(' ', StringSplitOptions.RemoveEmptyEntries).Select(int.Parse));
 
-                // Kiểm tra Don't Cares
                 int maxValue = (1 << numVariables) - 1;
                 foreach (var dc in dontCares)
                 {
@@ -454,13 +488,13 @@ namespace QuineMcCluskey
 
                 IBooleanFunctionMinimizer minimizer = MinimizerFactory.CreateMinimizer(numVariables, inputStrategy, dontCares);
 
-                HashSet<string> minimizedSOP = minimizer.MinimizeSOP();
+                HashSet<string> minimizedSOP = minimizer.MinimizeSOP() ?? new HashSet<string>();
                 Console.WriteLine("Hàm SOP tối giản:");
-                Console.WriteLine("Y = " + string.Join(" + ", minimizedSOP));
+                Console.WriteLine("Y = " + (minimizedSOP.Any() ? string.Join(" + ", minimizedSOP) : "0"));
 
-                string minimizedPOS = minimizer.MinimizePOS();
+                string minimizedPOS = minimizer.MinimizePOS() ?? "";
                 Console.WriteLine("Hàm POS tối giản:");
-                Console.WriteLine(minimizedPOS);
+                Console.WriteLine(minimizedPOS.Length > 0 ? minimizedPOS : "1");
             }
             catch (ArgumentException ex)
             {
